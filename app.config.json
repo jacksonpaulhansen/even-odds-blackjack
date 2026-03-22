@@ -2,8 +2,15 @@
   "appName": "Even G2 Base App",
   "publishUrl": "https://jacksonpaulhansen.github.io/EvenRealitiesG2_BaseSimpleApp/",
   "git": {
+    "branch": "master",
+    "repos": [
+      "https://github.com/your-user/your-repo.git",
+      "https://github.com/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleApp.git",
+      "https://github.com/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleAppNew.git",
+      "https://github.com/jacksonpaulhansen/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleApp.git"
+    ],
     "enabled": true,
-    "userName": "jhansenIPAutomation",
+    "commitMessagePrefix": "publish",
     "userEmail": "128513998+jhansenIPAutomation@users.noreply.github.com",
     "users": [
       {
@@ -15,15 +22,9 @@
         "email": "128513998+jhansenIPAutomation@users.noreply.github.com"
       }
     ],
-    "repos": [
-      "https://github.com/your-user/your-repo.git",
-      "https://github.com/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleApp.git",
-      "https://github.com/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleAppNew.git",
-      "https://github.com/jacksonpaulhansen/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleApp.git"
-    ],
+    "userName": "jhansenIPAutomation",
     "remoteUrl": "https://github.com/jacksonpaulhansen/EvenRealitiesG2_BaseSimpleApp.git",
-    "branch": "master",
-    "commitMessagePrefix": "publish",
-    "autoSetGithubPagesUrl": true
+    "autoSetGithubPagesUrl": true,
+    "deployed": true
   }
 }
