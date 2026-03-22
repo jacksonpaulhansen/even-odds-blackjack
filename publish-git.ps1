@@ -9,6 +9,17 @@ function Write-Info {
   Write-Host "[even-g2] $Message" -ForegroundColor Cyan
 }
 
+function Invoke-Git {
+  param(
+    [string[]]$GitArgs
+  )
+
+  & git @GitArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE"
+  }
+}
+
 function Ask-IfMissing {
   param(
     [string]$Value,
@@ -154,7 +165,7 @@ if (-not $git) {
 
 if (-not (Test-Path ".git")) {
   Write-Info "Initializing git repo with branch '$branch'"
-  git init -b $branch | Out-Null
+  Invoke-Git @("init", "-b", $branch)
 }
 
 if ($users.Count -gt 0) {
@@ -208,9 +219,9 @@ if ($gitConfig.userName -ne $userName -or $gitConfig.userEmail -ne $userEmail -o
   ($config | ConvertTo-Json -Depth 8) | Set-Content $configPath
 }
 
-git config user.name $userName
-git config user.email $userEmail
-git config credential.helper manager | Out-Null
+Invoke-Git @("config", "user.name", $userName)
+Invoke-Git @("config", "user.email", $userEmail)
+Invoke-Git @("config", "credential.helper", "manager")
 
 $originExists = $false
 $originUrl = ""
@@ -223,14 +234,14 @@ try {
 
 if (-not $originExists -and $remoteUrl) {
   Write-Info "Adding origin remote"
-  git remote add origin $remoteUrl
+  Invoke-Git @("remote", "add", "origin", $remoteUrl)
   $originExists = $true
   $originUrl = $remoteUrl
 }
 
 if ($originExists -and $originUrl -ne $remoteUrl) {
   Write-Info "Updating origin remote URL"
-  git remote set-url origin $remoteUrl
+  Invoke-Git @("remote", "set-url", "origin", $remoteUrl)
   $originUrl = $remoteUrl
 }
 
@@ -251,19 +262,19 @@ if ($autoSetGithubPagesUrl) {
   }
 }
 
-git add -A
+Invoke-Git @("add", "-A")
 $hasStagedChanges = (git diff --cached --name-only).Length -gt 0
 if ($hasStagedChanges) {
   $commitMessage = "$messagePrefix $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
   Write-Info "Committing changes"
-  git commit -m $commitMessage | Out-Null
+  Invoke-Git @("commit", "-m", $commitMessage)
 } else {
   Write-Info "No file changes to commit."
 }
 
 if ($originExists) {
   Write-Info "Pushing branch '$branch' to origin"
-  git push -u origin $branch
+  Invoke-Git @("push", "-u", "origin", $branch)
 } else {
   Write-Info "No origin remote configured. Skipping push."
 }
