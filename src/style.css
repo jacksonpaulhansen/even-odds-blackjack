@@ -93,38 +93,3 @@ body {
   font-size: 0.75rem;
   white-space: pre-wrap;
 }
-
-.link-panel {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid #2b2b2b;
-  background: #0c0c0c;
-  border-radius: 6px;
-}
-
-.hidden {
-  display: none;
-}
-
-.link-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.link-grid input {
-  width: 100%;
-  border: 1px solid #3b3b3b;
-  background: #111;
-  color: #e7e7e7;
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-family: 'Consolas', 'Courier New', monospace;
-}
-
-.link-actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}

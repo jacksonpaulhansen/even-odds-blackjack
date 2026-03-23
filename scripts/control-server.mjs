@@ -270,7 +270,9 @@ async function runPublishApp(appName, patInput) {
 
   const userResult = await githubApi({ token, method: 'GET', pathName: '/user' });
   if (!userResult.response.ok) {
-    throw new Error('Invalid GitHub PAT. Please provide a valid token with repo/workflow/pages permissions.');
+    const err = new Error('Invalid GitHub PAT. Please provide a valid token with repo/workflow/pages permissions.');
+    err.code = 'INVALID_PAT';
+    throw err;
   }
 
   const owner = String(userResult.json?.login || '').trim();
@@ -556,18 +558,24 @@ const server = http.createServer(async (req, res) => {
         };
         sendJson(res, 200, { ok: true, ...result });
       } catch (error) {
+        const errCode = String(error?.code ?? '').trim();
         const errText = String(error);
-        const isPatRequired = errText.includes('PAT_REQUIRED');
+        const errMsg = String(error?.message ?? '');
+        const isPatRequired = errCode === 'PAT_REQUIRED' || errText.includes('PAT_REQUIRED');
+        const isInvalidPat =
+          errCode === 'INVALID_PAT' ||
+          errText.includes('INVALID_PAT') ||
+          errMsg.toLowerCase().includes('invalid github pat');
         lastPublish = {
           ok: false,
           error: errText,
           logs: errText,
           at: new Date().toISOString(),
         };
-        sendJson(res, isPatRequired ? 400 : 500, {
+        sendJson(res, isPatRequired || isInvalidPat ? 400 : 500, {
           ok: false,
-          error: isPatRequired ? 'PAT_REQUIRED' : errText,
-          code: isPatRequired ? 'PAT_REQUIRED' : undefined,
+          error: isPatRequired ? 'PAT_REQUIRED' : isInvalidPat ? 'INVALID_PAT' : errText,
+          code: isPatRequired ? 'PAT_REQUIRED' : isInvalidPat ? 'INVALID_PAT' : undefined,
         });
       } finally {
         publishRunning = false;
