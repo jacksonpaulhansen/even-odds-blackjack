@@ -1,7 +1,7 @@
 {
-  "package_id": "com.evenbreakalitypomodoroapp",
+  "package_id": "com.jacksonpaulhansen.evenoddsblackjack",
   "edition": "202601",
-  "name": "even_break-ality",
+  "name": "even-odds-blackjack",
   "version": "0.1.0",
   "min_app_version": "2.0.0",
   "min_sdk_version": "0.0.7",
