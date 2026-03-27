@@ -10,71 +10,59 @@ import {
 } from '@evenrealities/even_hub_sdk';
 
 type InputAction = 'CLICK' | 'UP' | 'DOWN' | 'DOUBLE_CLICK';
-type PomodoroMode = 'FOCUS' | 'BREAK';
-type TransitionMode = 'AUTO' | 'MANUAL';
+type CountEventType = 'LOW' | 'NEUTRAL' | 'HIGH';
+type HudMode = 'COUNT' | 'MENU' | 'DECKS' | 'CHEAT';
+
+type CountEvent = {
+  type: CountEventType;
+  delta: number;
+};
 
 type AppState = {
-  mode: PomodoroMode;
-  remainingSeconds: number;
-  running: boolean;
+  runningCount: number;
+  cardsSeen: number;
+  decksTotal: number;
+  showCheatOnMain: boolean;
   publishStatus: string;
   deployed: boolean;
-  transitionMode: TransitionMode;
-  inTransition: boolean;
-  pendingMode: PomodoroMode | null;
-  transitionRemainingSeconds: number;
-  transitionElapsedMs: number;
-  flashAlternate: boolean;
-  flashIntervalMs: number;
-  flashCharA: string;
-  flashCharB: string;
-  flashQtyA: number;
-  flashQtyB: number;
-  transitionSeconds: number;
-  focusMinutes: number;
-  breakMinutes: number;
+  lastAction: string;
+  history: CountEvent[];
+  hudMode: HudMode;
+  menuIndex: number;
+  disclaimerAccepted: boolean;
 };
 
 const MAIN_CONTAINER_ID = 1;
 const MAIN_CONTAINER_NAME = 'mainText';
 const CONTROL_URL = 'http://127.0.0.1:8787';
 const REQUIRED_CONTROL_CAPABILITY = 'publish-app';
-const DEFAULT_FOCUS_MINUTES = 25;
-const DEFAULT_BREAK_MINUTES = 5;
-const TRANSITION_SECONDS = 10;
 const DISPLAY_WIDTH = 576;
 const MAIN_PANEL_X = 24;
 const MAIN_PANEL_WIDTH = 528;
-const FLASH_ROWS = 10;
-const TICK_INTERVAL_MS = 50;
 const HIDE_DEBUG_TOOLS = true;
 const DEV_TOOLS_TOGGLE_SHORTCUT = 'Ctrl+Shift+D';
+const MAX_APP_NAME_LENGTH = 20;
+const DISCLAIMER_SECONDS = 15;
+
+const MENU_ITEMS = ['Undo Last Card', 'New Shoe', 'Adjust Decks', 'Cheat Sheet', 'Close Menu'] as const;
 
 const state: AppState = {
-  mode: 'FOCUS',
-  remainingSeconds: DEFAULT_FOCUS_MINUTES * 60,
-  running: false,
+  runningCount: 0,
+  cardsSeen: 0,
+  decksTotal: 6,
+  showCheatOnMain: false,
   publishStatus: 'IDLE',
   deployed: false,
-  transitionMode: 'AUTO',
-  inTransition: false,
-  pendingMode: null,
-  transitionRemainingSeconds: 0,
-  transitionElapsedMs: 0,
-  flashAlternate: true,
-  flashIntervalMs: 250,
-  flashCharA: '\u25A7',
-  flashCharB: ' ',
-  flashQtyA: 26,
-  flashQtyB: 26,
-  transitionSeconds: TRANSITION_SECONDS,
-  focusMinutes: DEFAULT_FOCUS_MINUTES,
-  breakMinutes: DEFAULT_BREAK_MINUTES,
+  lastAction: 'Ready',
+  history: [],
+  hudMode: 'COUNT',
+  menuIndex: 0,
+  disclaimerAccepted: false,
 };
 
 let bridge: EvenAppBridge | null = null;
 let startupCreated = false;
-let lastTickMs = Date.now();
+let startupMs = Date.now();
 let lastResolvedAction: InputAction | null = null;
 let lastResolvedActionAt = 0;
 let lastEventSignature = '';
@@ -88,83 +76,23 @@ if (!app) throw new Error('Missing #app root element');
 app.innerHTML = `
   <main class="hud-shell">
     <fieldset class="group-box">
-      <legend>User Settings</legend>
-
-      <fieldset class="group-box compact-box">
-        <legend>Durations</legend>
-        <div class="settings-row">
-          <div class="mini-field">
-            <label for="focus-minutes">Focus</label>
-            <input id="focus-minutes" type="number" min="0" max="180" step="0.1" value="${DEFAULT_FOCUS_MINUTES}" />
-            <span class="field-unit">mins</span>
-          </div>
+      <legend>Blackjack Counter Setup</legend>
+      <div class="settings-row">
+        <div class="mini-field wide-field">
+          <label for="decks-total">Shoe Decks</label>
+          <input id="decks-total" type="number" min="1" max="8" step="0.5" value="6" />
         </div>
-        <div class="settings-row">
-          <div class="mini-field">
-            <label for="break-minutes">Break</label>
-            <input id="break-minutes" type="number" min="0" max="180" step="0.1" value="${DEFAULT_BREAK_MINUTES}" />
-            <span class="field-unit">mins</span>
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset class="group-box compact-box">
-        <legend>Transition</legend>
-        <div class="settings-row">
-          <div class="mini-field">
-            <label for="transition-mode">Method</label>
-            <select id="transition-mode">
-              <option value="AUTO">AUTO</option>
-              <option value="MANUAL">MANUAL</option>
-            </select>
-          </div>
-          <div class="mini-field">
-            <label for="transition-seconds">Sec</label>
-            <input id="transition-seconds" type="number" min="1" max="300" value="${TRANSITION_SECONDS}" />
-          </div>
-        </div>
-
-        <fieldset class="group-box compact-box">
-          <legend>Flash A</legend>
-          <div class="settings-row">
-            <div class="mini-field">
-              <label for="flash-char-a">Char</label>
-              <input id="flash-char-a" type="text" maxlength="1" value="" />
-            </div>
-            <div class="mini-field">
-              <label for="flash-qty-a">Qty</label>
-              <input id="flash-qty-a" type="number" min="1" max="80" value="26" />
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset class="group-box compact-box flash-b-box" id="alternate-block">
-            <legend>
-              <label class="legend-toggle" for="flash-alternate">
-                <span>FLASH B</span>
-                <input id="flash-alternate" type="checkbox" checked />
-              </label>
-            </legend>
-            <div class="group-box-body">
-              <div class="settings-row">
-                <div class="mini-field">
-                  <label for="flash-interval-ms">Flash</label>
-                  <input id="flash-interval-ms" type="number" min="50" max="10000" step="50" value="250" />
-                  <span class="field-unit">ms</span>
-                </div>
-                <div class="mini-field">
-                  <label for="flash-char-b">Char</label>
-                  <input id="flash-char-b" type="text" maxlength="1" value="" />
-                </div>
-                <div class="mini-field">
-                  <label for="flash-qty-b">Qty</label>
-                  <input id="flash-qty-b" type="number" min="1" max="80" value="26" />
-                </div>
-              </div>
-            </div>
-          </fieldset>
-      </fieldset>
-
+      </div>
+      <div class="settings-row">
+        <label class="legend-toggle" for="show-cheat-main">
+          <span>Show HI-LO CHEAT on main screen</span>
+          <input id="show-cheat-main" type="checkbox" />
+        </label>
+      </div>
+      <p class="hint">On glasses: Click=Low, Up=High, Down=Neutral, Double-click=Menu</p>
+      <p class="hint">RC = Running Count, TC = True Count</p>
+      <p class="hint">Menu actions: undo, new shoe, deck adjust, and card cheat sheet</p>
+      <p class="hint">Disclaimer: Training tool only. Casino use may violate house rules or state laws.</p>
     </fieldset>
 
     <fieldset id="debug-tools" class="group-box" ${HIDE_DEBUG_TOOLS ? 'style="display:none;"' : ''}>
@@ -176,13 +104,12 @@ app.innerHTML = `
       </div>
       <pre id="event-log" class="event-log"></pre>
       <pre id="publish-log" class="publish-log"></pre>
-      
+
       <div class="sim-display">
         <pre id="hud-main-preview" class="hud-preview hud-preview-main"></pre>
       </div>
-      <p class="hint">Input: Click=start/pause, Double-click=reset, Up=Focus, Down=Break</p>
+      <p class="hint">Keyboard simulation: Enter=Click, Arrow Up/Down, D=Double-click</p>
     </fieldset>
-
   </main>
 `;
 
@@ -190,163 +117,135 @@ const hudMainPreview = document.querySelector<HTMLPreElement>('#hud-main-preview
 const publishBtn = document.querySelector<HTMLButtonElement>('#publish-btn')!;
 const ehpkBtn = document.querySelector<HTMLButtonElement>('#ehpk-btn')!;
 const debugToolsFieldset = document.querySelector<HTMLElement>('#debug-tools')!;
-const focusMinutesInput = document.querySelector<HTMLInputElement>('#focus-minutes')!;
-const breakMinutesInput = document.querySelector<HTMLInputElement>('#break-minutes')!;
-const transitionModeSelect = document.querySelector<HTMLSelectElement>('#transition-mode')!;
-const transitionSecondsInput = document.querySelector<HTMLInputElement>('#transition-seconds')!;
-const flashAlternateInput = document.querySelector<HTMLInputElement>('#flash-alternate')!;
-const flashIntervalMsInput = document.querySelector<HTMLInputElement>('#flash-interval-ms')!;
-const flashCharAInput = document.querySelector<HTMLInputElement>('#flash-char-a')!;
-const flashCharBInput = document.querySelector<HTMLInputElement>('#flash-char-b')!;
-const flashQtyAInput = document.querySelector<HTMLInputElement>('#flash-qty-a')!;
-const flashQtyBInput = document.querySelector<HTMLInputElement>('#flash-qty-b')!;
-const alternateBlock = document.querySelector<HTMLElement>('#alternate-block')!;
+const decksTotalInput = document.querySelector<HTMLInputElement>('#decks-total')!;
+const showCheatMainInput = document.querySelector<HTMLInputElement>('#show-cheat-main')!;
 const publishStatus = document.querySelector<HTMLSpanElement>('#publish-status')!;
 const eventLog = document.querySelector<HTMLPreElement>('#event-log')!;
 const publishLog = document.querySelector<HTMLPreElement>('#publish-log')!;
 const eventLines: string[] = [];
-const DISPLAY_COLUMNS = 52;
 
 const mainPanelLeftPercent = (MAIN_PANEL_X / DISPLAY_WIDTH) * 100;
 const mainPanelWidthPercent = (MAIN_PANEL_WIDTH / DISPLAY_WIDTH) * 100;
 hudMainPreview.style.left = `${mainPanelLeftPercent}%`;
 hudMainPreview.style.width = `${mainPanelWidthPercent}%`;
 
-function secondsForMode(mode: PomodoroMode): number {
-  if (mode === 'FOCUS') {
-    return Math.max(1, Math.round(state.focusMinutes * 60));
-  }
-  return Math.max(1, Math.round(state.breakMinutes * 60));
-}
-
-function clampInt(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
 function clampFloat(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
 }
 
-function charCellWidth(char: string): number {
-  const code = (char || '#').codePointAt(0) ?? 35;
-
-  // Simulator/G2 text behaves closer to fixed cells than browser pixels.
-  // Block glyphs commonly occupy ~2 cells while ASCII takes ~1.
-  if (code >= 0x2580 && code <= 0x259f) return 2; // Block Elements
-  if (code >= 0x25a0 && code <= 0x25ff) return 2; // Geometric Shapes
-  if (code >= 0x2500 && code <= 0x257f) return 2; // Box Drawing
-  if (code >= 0xff01 && code <= 0xff60) return 2; // Full-width forms
-  return 1;
+function clampAppName(value: string): string {
+  return String(value || '').trim().slice(0, MAX_APP_NAME_LENGTH);
 }
 
-function estimateQtyForChar(char: string): number {
-  const width = charCellWidth((char || '#').slice(0, 1));
-  return clampInt(Math.floor(DISPLAY_COLUMNS / width), 1, 80);
+function decksRemaining(): number {
+  const cardsLeft = Math.max(0, state.decksTotal * 52 - state.cardsSeen);
+  const remaining = cardsLeft / 52;
+  return Math.max(0.25, remaining);
 }
 
-function formatTime(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const mm = String(Math.floor(s / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
+function trueCount(): number {
+  return state.runningCount / decksRemaining();
 }
 
-function resetCurrentMode(): void {
-  state.remainingSeconds = secondsForMode(state.mode);
-  state.inTransition = false;
-  state.pendingMode = null;
-  state.transitionRemainingSeconds = 0;
-  state.transitionElapsedMs = 0;
-  lastTickMs = Date.now();
+function recommendation(): string {
+  const tc = trueCount();
+  if (tc >= 4) return 'Bet max spread';
+  if (tc >= 3) return 'Bet 3x-4x base';
+  if (tc >= 2) return 'Bet 2x base';
+  if (tc >= 1) return 'Bet base';
+  return 'Bet table min';
 }
 
-function setMode(mode: PomodoroMode): void {
-  state.mode = mode;
-  state.running = false;
-  resetCurrentMode();
+function advantageEstimate(): number {
+  const tc = trueCount();
+  return (tc - 1) * 0.5;
 }
 
-function toggleRunPause(): void {
-  if (state.inTransition && state.transitionMode === 'MANUAL' && state.pendingMode) {
-    completeTransition(true);
-    return;
-  }
-  if (state.inTransition) return;
-  state.running = !state.running;
-  lastTickMs = Date.now();
+function signedRounded(value: number, digits = 1): string {
+  const rounded = Number(value.toFixed(digits));
+  return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(digits)}`;
 }
 
-function startTransition(nextMode: PomodoroMode): void {
-  state.inTransition = true;
-  state.pendingMode = nextMode;
-  state.running = false;
-  state.transitionElapsedMs = 0;
-
-  if (state.transitionMode === 'MANUAL') {
-    state.transitionRemainingSeconds = 0;
-  } else {
-    state.transitionRemainingSeconds = state.transitionSeconds;
-  }
-
-  lastTickMs = Date.now();
+function disclaimerRemainingSeconds(nowMs = Date.now()): number {
+  const elapsed = Math.max(0, nowMs - startupMs);
+  const remainingMs = Math.max(0, DISCLAIMER_SECONDS * 1000 - elapsed);
+  return Math.ceil(remainingMs / 1000);
 }
 
-function completeTransition(startRunning: boolean): void {
-  if (!state.pendingMode) return;
-  state.mode = state.pendingMode;
-  state.pendingMode = null;
-  state.inTransition = false;
-  state.transitionRemainingSeconds = 0;
-  state.transitionElapsedMs = 0;
-  state.remainingSeconds = secondsForMode(state.mode);
-  state.running = startRunning;
-  lastTickMs = Date.now();
+function buildMenuHudText(): string {
+  return [
+    'COMMAND MENU',
+    `${state.menuIndex === 0 ? '>' : ' '} Undo Last`,
+    `${state.menuIndex === 1 ? '>' : ' '} New Shoe`,
+    `${state.menuIndex === 2 ? '>' : ' '} Adjust Decks`,
+    `${state.menuIndex === 3 ? '>' : ' '} Cheat Sheet`,
+    `${state.menuIndex === 4 ? '>' : ' '} Close`,
+  ].join('\n');
 }
 
-function buildFullFlashText(char: string, qty: number, rows: number): string {
-  const safeChar = (char && char.length > 0 ? char : '#').slice(0, 1);
-  const safeQty = Math.max(1, Math.floor(qty));
-  const safeRows = Math.max(1, Math.floor(rows));
-  const line = safeChar.repeat(safeQty);
-  return Array.from({ length: safeRows }, () => line).join('\n');
+function buildDeckHudText(): string {
+  return [
+    'DECK ADJUST',
+    `Current ${state.decksTotal.toFixed(1)} decks`,
+    '\nUP +0.5',
+    'DOWN -0.5',
+    '\nCLICK save+exit',
+    'DBL exit',
+  ].join('\n');
 }
 
-function getCurrentFlashSpec(): { char: string; qty: number } {
-  if (!state.flashAlternate) {
-    return { char: state.flashCharA, qty: state.flashQtyA };
-  }
+function buildCheatHudText(): string {
+  return [
+    'HI-LO CHEAT',
+    '(CLICK) +1 : 2 3 4 5 6',
+    '(DOWN)   0 : 7 8 9',
+    '(UP)    -1 : 10 J Q K A',
+    '\n\nCLICK or DBL to return',
+  ].join('\n');
+}
 
-  const intervalMs = Math.max(50, Math.floor(state.flashIntervalMs));
-  const phase = Math.floor(state.transitionElapsedMs / intervalMs) % 2;
-  if (phase === 0) {
-    return { char: state.flashCharA, qty: state.flashQtyA };
-  }
-  return { char: state.flashCharB, qty: state.flashQtyB };
+function buildCountHudText(): string {
+  const tc = trueCount();
+  const adv = advantageEstimate();
+  const cheatLine = 'CLICK(+1):2-6  DOWN(0):7-9  UP(-1):10-A';
+
+  const lines = [
+    `DECKS: ${decksRemaining().toFixed(2)}     |     RC: ${state.runningCount >= 0 ? '+' : ''}${state.runningCount}     |     TC: ${signedRounded(tc, 1)}     |     EDGE: ${signedRounded(adv, 1)}%`,
+    recommendation(),
+    state.showCheatOnMain?cheatLine:'',
+    '\n\n\n\n\n',
+    'DBL for menu',
+  ];
+
+  return lines.join('\n');
 }
 
 function buildMainHudText(): string {
-  if (state.inTransition && state.pendingMode) {
-    if (state.transitionMode === 'MANUAL') {
-      const totalMs = Math.max(1, Math.floor(state.transitionSeconds * 1000));
-      if (state.transitionElapsedMs >= totalMs) {
-        return [
-          `${state.mode} -> ${state.pendingMode}`,
-          'CLICK to continue',
-        ].join('\n');
-      }
-    }
-
-    const spec = getCurrentFlashSpec();
-    return buildFullFlashText(spec.char, spec.qty, FLASH_ROWS);
+  const disclaimerRemaining = disclaimerRemainingSeconds();
+  if (!state.disclaimerAccepted && disclaimerRemaining > 0) {
+    return [
+      'TRAINING MODE ONLY',
+      'Casino use may violate',
+      'house rules or state laws',
+      '',
+      `Cooldown ${disclaimerRemaining}s`,
+    ].join('\n');
+  }
+  if (!state.disclaimerAccepted) {
+    return [
+      'TRAINING MODE ONLY',
+      'Casino use may violate',
+      'house rules or state laws',
+      '',
+      'OK (CLICK)',
+    ].join('\n');
   }
 
-  return [
-    state.mode, ':',
-    state.running ? "▶" : "ll",
-    formatTime(state.remainingSeconds)
-  ].join(' ');
+  if (state.hudMode === 'MENU') return buildMenuHudText();
+  if (state.hudMode === 'DECKS') return buildDeckHudText();
+  if (state.hudMode === 'CHEAT') return buildCheatHudText();
+  return buildCountHudText();
 }
 
 async function pushHudToEvenHub(): Promise<void> {
@@ -369,7 +268,6 @@ async function render(): Promise<void> {
   hudMainPreview.textContent = buildMainHudText();
   publishStatus.textContent = state.publishStatus;
   publishBtn.textContent = state.deployed ? 'Update App' : 'Publish App';
-  alternateBlock.classList.toggle('collapsed', !state.flashAlternate);
 
   try {
     await pushHudToEvenHub();
@@ -378,67 +276,123 @@ async function render(): Promise<void> {
   }
 }
 
-function tickPomodoro(): void {
-  const now = Date.now();
-  const deltaMs = now - lastTickMs;
-  if (deltaMs <= 0) {
+function applyCountEvent(type: CountEventType): void {
+  const delta = type === 'LOW' ? 1 : type === 'HIGH' ? -1 : 0;
+  state.runningCount += delta;
+  state.cardsSeen += 1;
+  state.history.push({ type, delta });
+  state.lastAction = `Card: ${type}`;
+}
+
+function undoLastEvent(): void {
+  const last = state.history.pop();
+  if (!last) {
+    state.lastAction = 'Undo: none';
     return;
   }
 
-  if (state.inTransition) {
-    lastTickMs = now;
-    state.transitionElapsedMs += deltaMs;
-    if (state.transitionMode === 'AUTO') {
-      const totalMs = Math.max(1, Math.floor(state.transitionSeconds * 1000));
-      const remainingMs = Math.max(0, totalMs - state.transitionElapsedMs);
-      state.transitionRemainingSeconds = remainingMs / 1000;
+  state.runningCount -= last.delta;
+  state.cardsSeen = Math.max(0, state.cardsSeen - 1);
+  state.lastAction = `Undo: ${last.type}`;
+}
 
-      if (remainingMs <= 0 && state.pendingMode) {
-        completeTransition(true);
-      }
-    } else {
-      // Manual mode flashes first, then waits for click to continue.
-      state.transitionRemainingSeconds = 0;
-    }
+function resetShoe(): void {
+  state.runningCount = 0;
+  state.cardsSeen = 0;
+  state.history = [];
+  state.lastAction = 'New shoe';
+}
 
-    void render();
+function openMenu(): void {
+  state.hudMode = 'MENU';
+  state.menuIndex = 0;
+}
+
+function closeToCount(lastAction: string): void {
+  state.hudMode = 'COUNT';
+  state.lastAction = lastAction;
+}
+
+function cycleMenu(direction: 1 | -1): void {
+  const max = MENU_ITEMS.length;
+  state.menuIndex = (state.menuIndex + direction + max) % max;
+}
+
+function executeMenuAction(): void {
+  const item = MENU_ITEMS[state.menuIndex];
+  if (item === 'Undo Last Card') {
+    undoLastEvent();
+    closeToCount(state.lastAction);
     return;
   }
-
-  if (!state.running) {
+  if (item === 'New Shoe') {
+    resetShoe();
+    closeToCount(state.lastAction);
     return;
   }
-
-  const deltaSeconds = Math.floor(deltaMs / 1000);
-  if (deltaSeconds <= 0) {
+  if (item === 'Adjust Decks') {
+    state.hudMode = 'DECKS';
     return;
   }
-
-  lastTickMs += deltaSeconds * 1000;
-  state.remainingSeconds -= deltaSeconds;
-
-  while (state.remainingSeconds <= 0) {
-    const nextMode: PomodoroMode = state.mode === 'FOCUS' ? 'BREAK' : 'FOCUS';
-    startTransition(nextMode);
-    break;
+  if (item === 'Cheat Sheet') {
+    state.hudMode = 'CHEAT';
+    return;
   }
+  closeToCount('Back to count');
+}
 
-  void render();
+function applyDeckAdjust(increment: number): void {
+  state.decksTotal = clampFloat(state.decksTotal + increment, 1, 8);
+  state.lastAction = `Decks set: ${state.decksTotal.toFixed(1)}`;
 }
 
 async function applyAction(action: InputAction): Promise<void> {
-  if (action === 'CLICK') {
-    console.log('CLICK');
-    toggleRunPause();
-  } else if (action === 'DOUBLE_CLICK') {
-    state.running = false;
-    resetCurrentMode();
-  } else if (action === 'UP') {
-    setMode('FOCUS');
-  } else if (action === 'DOWN') {
-    setMode('BREAK');
+  if (!state.disclaimerAccepted && disclaimerRemainingSeconds() > 0) {
+    state.lastAction = 'Disclaimer cooldown active';
+    await render();
+    return;
+  }
+  if (!state.disclaimerAccepted) {
+    if (action === 'CLICK') {
+      state.disclaimerAccepted = true;
+      state.lastAction = 'Disclaimer accepted';
+    } else {
+      state.lastAction = 'Press click to continue';
+    }
+    await render();
+    return;
   }
 
+  if (state.hudMode === 'COUNT') {
+    if (action === 'CLICK') applyCountEvent('LOW');
+    if (action === 'UP') applyCountEvent('HIGH');
+    if (action === 'DOWN') applyCountEvent('NEUTRAL');
+    if (action === 'DOUBLE_CLICK') openMenu();
+    await render();
+    return;
+  }
+
+  if (state.hudMode === 'MENU') {
+    if (action === 'UP') cycleMenu(-1);
+    if (action === 'DOWN') cycleMenu(1);
+    if (action === 'CLICK') executeMenuAction();
+    if (action === 'DOUBLE_CLICK') closeToCount('Back to count');
+    await render();
+    return;
+  }
+
+  if (state.hudMode === 'DECKS') {
+    if (action === 'UP') applyDeckAdjust(0.5);
+    if (action === 'DOWN') applyDeckAdjust(-0.5);
+    if (action === 'CLICK' || action === 'DOUBLE_CLICK') closeToCount(state.lastAction);
+    decksTotalInput.value = String(state.decksTotal);
+    await render();
+    return;
+  }
+
+  if (action === 'CLICK' || action === 'DOUBLE_CLICK') {
+    closeToCount('Back to count');
+  }
   await render();
 }
 
@@ -570,12 +524,12 @@ async function publishApp(): Promise<void> {
     | null;
 
   const savedRepoName = (configBody?.config?.github?.repo ?? '').trim();
-  const defaultAppName = savedRepoName || configBody?.config?.appName || 'even-g2-pomodoro';
+  const defaultAppName = clampAppName(savedRepoName || configBody?.config?.appName || 'even-g2-blackjack');
   let appName = defaultAppName;
 
   if (!savedRepoName) {
-    const appNameInput = window.prompt('App name (used as GitHub repo name):', defaultAppName);
-    appName = (appNameInput ?? '').trim();
+    const appNameInput = window.prompt(`App name (max ${MAX_APP_NAME_LENGTH} chars):`, defaultAppName);
+    appName = clampAppName(appNameInput ?? '');
     if (!appName) {
       publishLog.textContent = 'Publish cancelled: app name is required.';
       await render();
@@ -651,10 +605,10 @@ async function buildEhpk(): Promise<void> {
 
   const configResponse = await fetch(`${CONTROL_URL}/config`, { cache: 'no-store' }).catch(() => null);
   const configBody = (await configResponse?.json().catch(() => null)) as { config?: { appName?: string } } | null;
-  const defaultAppName = (configBody?.config?.appName ?? 'even-g2-app').trim() || 'even-g2-app';
+  const defaultAppName = clampAppName((configBody?.config?.appName ?? 'even-g2-blackjack').trim() || 'even-g2-blackjack');
 
-  const appNameInput = window.prompt('App name for .ehpk package:', defaultAppName);
-  const appName = (appNameInput ?? '').trim();
+  const appNameInput = window.prompt(`App name for .ehpk package (max ${MAX_APP_NAME_LENGTH} chars):`, defaultAppName);
+  const appName = clampAppName(appNameInput ?? '');
   if (!appName) {
     publishLog.textContent = 'Build cancelled: app name is required.';
     await render();
@@ -709,110 +663,33 @@ function setKeyboardFallback(): void {
       console.log(`[debug-tools] ${debugToolsVisible ? 'shown' : 'hidden'} (${DEV_TOOLS_TOGGLE_SHORTCUT})`);
       return;
     }
+
     if (event.key === 'Enter') return void applyAction('CLICK');
-    if (event.key.toLowerCase() === 'd') return void applyAction('DOUBLE_CLICK');
     if (event.key === 'ArrowUp') return void applyAction('UP');
     if (event.key === 'ArrowDown') return void applyAction('DOWN');
+    if (event.key.toLowerCase() === 'd') return void applyAction('DOUBLE_CLICK');
   });
 }
 
 async function init(): Promise<void> {
+  startupMs = Date.now();
   setKeyboardFallback();
+
   publishBtn.addEventListener('click', () => void publishApp());
   ehpkBtn.addEventListener('click', () => void buildEhpk());
 
-  transitionModeSelect.value = state.transitionMode;
-  focusMinutesInput.value = String(state.focusMinutes);
-  breakMinutesInput.value = String(state.breakMinutes);
-  transitionSecondsInput.value = String(state.transitionSeconds);
-  flashAlternateInput.checked = state.flashAlternate;
-  flashIntervalMsInput.value = String(state.flashIntervalMs);
-  flashCharAInput.value = state.flashCharA;
-  flashCharBInput.value = state.flashCharB;
-  flashQtyAInput.value = String(state.flashQtyA);
-  flashQtyBInput.value = String(state.flashQtyB);
-
-  const onFocusDurationChange = () => {
-    state.focusMinutes = clampFloat(Number(focusMinutesInput.value), 0, 180);
-    focusMinutesInput.value = String(state.focusMinutes);
-    if (!state.running && !state.inTransition && state.mode === 'FOCUS') {
-      state.remainingSeconds = secondsForMode('FOCUS');
-    }
-    void render();
-  };
-
-  const onBreakDurationChange = () => {
-    state.breakMinutes = clampFloat(Number(breakMinutesInput.value), 0, 180);
-    breakMinutesInput.value = String(state.breakMinutes);
-    if (!state.running && !state.inTransition && state.mode === 'BREAK') {
-      state.remainingSeconds = secondsForMode('BREAK');
-    }
-    void render();
-  };
-
-  focusMinutesInput.addEventListener('change', onFocusDurationChange);
-  breakMinutesInput.addEventListener('change', onBreakDurationChange);
-
-  transitionModeSelect.addEventListener('change', () => {
-    state.transitionMode = transitionModeSelect.value === 'MANUAL' ? 'MANUAL' : 'AUTO';
-    if (state.inTransition && state.transitionMode === 'AUTO' && state.transitionRemainingSeconds <= 0) {
-      state.transitionRemainingSeconds = state.transitionSeconds;
-      state.transitionElapsedMs = 0;
-      lastTickMs = Date.now();
-    }
+  decksTotalInput.addEventListener('change', () => {
+    state.decksTotal = clampFloat(Number(decksTotalInput.value), 1, 8);
+    decksTotalInput.value = String(state.decksTotal);
+    state.lastAction = `Decks set: ${state.decksTotal.toFixed(1)}`;
     void render();
   });
-
-  transitionSecondsInput.addEventListener('change', () => {
-    const next = Math.max(1, Math.min(300, Number(transitionSecondsInput.value) || TRANSITION_SECONDS));
-    state.transitionSeconds = next;
-    transitionSecondsInput.value = String(next);
+  showCheatMainInput.checked = state.showCheatOnMain;
+  showCheatMainInput.addEventListener('change', () => {
+    state.showCheatOnMain = showCheatMainInput.checked;
+    state.lastAction = state.showCheatOnMain ? 'Main cheat: on' : 'Main cheat: off';
     void render();
   });
-
-  flashAlternateInput.addEventListener('change', () => {
-    state.flashAlternate = flashAlternateInput.checked;
-    void render();
-  });
-
-  flashIntervalMsInput.addEventListener('change', () => {
-    const next = Math.max(50, Math.min(10000, Number(flashIntervalMsInput.value) || 250));
-    state.flashIntervalMs = next;
-    flashIntervalMsInput.value = String(next);
-    void render();
-  });
-
-  flashCharAInput.addEventListener('change', () => {
-    state.flashCharA = (flashCharAInput.value || '#').slice(0, 1);
-    flashCharAInput.value = state.flashCharA;
-    state.flashQtyA = estimateQtyForChar(state.flashCharA);
-    flashQtyAInput.value = String(state.flashQtyA);
-    void render();
-  });
-
-  flashCharBInput.addEventListener('change', () => {
-    state.flashCharB = (flashCharBInput.value || '#').slice(0, 1);
-    flashCharBInput.value = state.flashCharB;
-    state.flashQtyB = estimateQtyForChar(state.flashCharB);
-    flashQtyBInput.value = String(state.flashQtyB);
-    void render();
-  });
-
-  flashQtyAInput.addEventListener('change', () => {
-    const next = Math.max(1, Math.min(80, Number(flashQtyAInput.value) || 26));
-    state.flashQtyA = next;
-    flashQtyAInput.value = String(next);
-    void render();
-  });
-
-  flashQtyBInput.addEventListener('change', () => {
-    const next = Math.max(1, Math.min(80, Number(flashQtyBInput.value) || 26));
-    state.flashQtyB = next;
-    flashQtyBInput.value = String(next);
-    void render();
-  });
-
-  window.setInterval(tickPomodoro, TICK_INTERVAL_MS);
 
   try {
     const health = await fetch(`${CONTROL_URL}/health`, { cache: 'no-store' });
@@ -876,6 +753,12 @@ async function init(): Promise<void> {
   } catch (error) {
     console.warn('Even bridge not ready, using browser fallback mode:', error);
   }
+
+  window.setInterval(() => {
+    if (!state.disclaimerAccepted) {
+      void render();
+    }
+  }, 250);
 
   await render();
 }

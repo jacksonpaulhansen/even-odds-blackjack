@@ -1,22 +1,39 @@
-# Even Breakality (Pomodoro for Even G2)
+# Even Odds (Blackjack Counter for Even G2)
 
-Simulator-first Pomodoro app for Even G2 / Even Hub.
+Blackjack card-counting assistant for Even G2 / Even Hub simulator.
+
+Disclaimer: This app is for training/educational use only. Using card-counting assistance in casinos may violate house rules or applicable state laws.
+
+Startup behavior: The glasses display shows a mandatory 15-second disclaimer splash with a cooldown timer, then shows `OK (CLICK)` and waits for a click before count controls are enabled.
 
 ## Features
 
-- Focus/Break timer
-- Gesture input support:
-  - `Click` = start/pause
-  - `Double Click` = reset current mode
-  - `Up` = switch to Focus
-  - `Down` = switch to Break
-- Transition modes:
-  - `AUTO`: switches mode after transition duration
-  - `MANUAL`: flashes, then shows `CLICK to continue` on HUD
-- Transition flash customization:
-  - Flash A char + qty
-  - Optional Flash B alternate char + qty
-  - Flash interval (`ms`)
+- Hi-Lo running count (`LOW +1`, `NEUTRAL 0`, `HIGH -1`)
+- True count based on shoe decks and cards seen
+- Decks remaining estimate
+- Simple betting guidance from true count
+- Undo last card and reset shoe
+- Glasses-first gesture flow:
+  - `Click` = Low card (2-6, `+1`)
+  - `Up` = High card (10-A, `-1`)
+  - `Down` = Neutral card (7-9, `0`)
+  - `Double Click` = open command menu
+  - Command menu supports: undo last card, new shoe, adjust decks, and cheat sheet
+
+## On-glasses command menu
+
+- Open with `Double Click` from the count screen
+- In menu:
+  - `Up/Down` navigate
+  - `Click` select
+  - `Double Click` close menu
+- Deck adjust mode:
+  - `Up` = `+0.5` decks
+  - `Down` = `-0.5` decks
+  - `Click` save and exit
+- Cheat sheet mode:
+  - Shows `+1`, `0`, and `-1` card groups
+  - `Click` or `Double Click` to return
 
 ## Run locally
 
@@ -29,31 +46,20 @@ Simulator-first Pomodoro app for Even G2 / Even Hub.
    - control server: `http://127.0.0.1:8787`
    - Even Hub simulator (if installed/found)
 
-## User Settings
+## Browser controls
 
-- `Focus` (mins, decimal allowed)
-- `Break` (mins, decimal allowed)
-- `Transition`:
-  - `Method`: `AUTO` or `MANUAL`
-  - `Sec`: transition duration
-- `Flash A`:
-  - `Char`
-  - `Qty`
-- `Flash B`:
-  - enable/disable via checkbox in header
-  - `Flash` (ms), `Char`, `Qty`
+- Setup:
+  - `Shoe Decks` input (optional pre-run setup in browser)
+- Keyboard gesture simulation:
+  - `Enter` = Click
+  - `Arrow Up` = Up
+  - `Arrow Down` = Down
+  - `D` = Double Click
 
-## Debug Tools
+## Debug tools
 
 - `Publish App`
 - `Build EHPK`
 - Event + publish logs
 
-Debug tools can be hidden for end users via `HIDE_DEBUG_TOOLS` in `src/main.ts`.
-Local dev toggle shortcut: `Ctrl+Shift+D`.
-
-## Publish notes
-
-- Publish flow now targets `main` branch.
-- New repos created by publish flow are private by default.
-- If GitHub Pages deploy fails, verify repository Pages source is set to `GitHub Actions`.
+Debug tools are hidden by default. Toggle with `Ctrl+Shift+D`.

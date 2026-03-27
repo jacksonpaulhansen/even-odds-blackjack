@@ -80,6 +80,10 @@ body {
   flex-wrap: wrap;
 }
 
+.tally-controls button {
+  min-width: 130px;
+}
+
 .settings-row {
   display: flex;
   align-items: center;
@@ -162,6 +166,10 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.wide-field {
+  min-width: 120px;
 }
 
 .mini-field > label {
